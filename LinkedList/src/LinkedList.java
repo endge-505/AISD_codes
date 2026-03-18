@@ -64,17 +64,17 @@ public class LinkedList {
 
     public void remove(IElement element){
         if (!(element instanceof Node)){
-            throw new RuntimeException(("..."));
+            throw new RuntimeException(("Invalid element type."));
         }
         if (isEmpty()){
             throw new NoSuchElementException();
         }
         Node node = (Node) element;
         if(node.isRemoved()){
-            throw  new NoSuchElementException("///");
+            throw  new NoSuchElementException("Element was removed.");
         }
         if(!node.belongsTo(this)){
-            throw new NoSuchElementException("***");
+            throw new NoSuchElementException("Element does not belong to this list.");
         }
         if (node == head){
             removeFirst();
