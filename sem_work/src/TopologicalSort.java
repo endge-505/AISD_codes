@@ -13,23 +13,17 @@ public class TopologicalSort{
             return (System.nanoTime() - startNs) / 1_000_000.0;
         }
     }
-    static void generateDatasets(String dir, int count, int nMin, int nMax) throws IOException {
+    static void generateData(String dir, int count, int nMin, int nMax) throws IOException {
         File d = new File(dir);
         if (!d.exists() && !d.mkdirs()) {
             throw new IOException("Не удалось создать каталог: " + dir);
         }
-
         Random rand = new Random(42);
-
         for (int i = 0; i < count; i++) {
-            // Размер плавно растёт от nMin до nMax — чтобы график имел смысл
             int n = nMin + (int) ((long) (nMax - nMin) * i / Math.max(1, count - 1));
-
-            // ребро u -> v разрешено только если u < v. Это гарантирует ацикличность.
             int targetEdges = Math.min((long) n * 4, (long) n * (n - 1) / 2) > Integer.MAX_VALUE
                     ? Integer.MAX_VALUE
                     : (int) Math.min((long) n * 4, (long) n * (n - 1) / 2);
-
             Set<Long> seen = new HashSet<>();
             List<int[]> edges = new ArrayList<>(targetEdges);
             int attempts = 0, maxAttempts = targetEdges * 10;
@@ -45,8 +39,6 @@ public class TopologicalSort{
                 long key = (long) u * n + v;
                 if (seen.add(key)) edges.add(new int[]{u, v});
             }
-
-            // Случайная перестановка (Fisher–Yates через Collections.shuffle)
             Integer[] permBoxed = IntStream.range(0, n).boxed().toArray(Integer[]::new);
             List<Integer> permList = Arrays.asList(permBoxed);
             Collections.shuffle(permList, rand);
@@ -66,6 +58,7 @@ public class TopologicalSort{
     }
 
     // Топосортировка на forward-star (массивы head/next/to). Возвращает число итераций.
+
     static long topoSortArray(int n, int[] head, int[] next, int[] to) {
         int[] indeg = new int[n];
         for (int u = 0; u < n; u++) {
@@ -113,13 +106,84 @@ public class TopologicalSort{
         return iter;
     }
 
+    static void runTests() {
+        int curn = 0;
+        System.out.println("Тесты:");
+        // 1. Пустой граф
+        if (run("Пустой", () -> {
+            assert topoSortArray(0, new int[0], new int[0], new int[0]) == 0;
+            return true;
+        })) curn++;
+
+        // 2. Одна вершина
+        if (run("1 вершина", () -> {
+            assert topoSortArray(1, new int[]{-1}, new int[0], new int[0]) == 0;
+            return true;
+        })) curn++;
+
+        // 3. Цепочка 0→1→2 (3 итерации)
+        if (run("Цепочка", () -> {
+            int n=3, m=2;
+            int[] h=new int[n], t=new int[m], nx=new int[m]; Arrays.fill(h,-1);
+            t[0]=1; nx[0]=h[0]; h[0]=0;  // 0→1
+            t[1]=2; nx[1]=h[1]; h[1]=1;  // 1→2
+            return topoSortArray(n,h,nx,t) == 2;
+        })) curn++;
+
+        // 4. Разветвление: 0→1, 0→2 (2 итерации)
+        if (run("Разветвление", () -> {
+            int n=3, m=2;
+            int[] h=new int[n], t=new int[m], nx=new int[m]; Arrays.fill(h,-1);
+            t[0]=1; nx[0]=h[0]; h[0]=0;
+            t[1]=2; nx[1]=h[0]; h[0]=1;
+            return topoSortArray(n,h,nx,t) == 2;
+        })) curn++;
+
+        // 5. Цикл должен выбросить исключение
+        if (run("Цикл", () -> {
+            int n=3, m=3;
+            int[] h=new int[n], t=new int[m], nx=new int[m]; Arrays.fill(h,-1);
+            t[0]=1; nx[0]=h[0]; h[0]=0;
+            t[1]=2; nx[1]=h[1]; h[1]=1;
+            t[2]=0; nx[2]=h[2]; h[2]=2;
+            try { topoSortArray(n,h,nx,t); return false; }
+            catch (IllegalStateException e) { return true; }
+        })) curn++;
+
+        // 6. Array и List дают одинаковые итерации
+        if (run("Array и List дают одинаковые итерации", () -> {
+            int n=5, m=4;
+            int[] h=new int[n], ta=new int[m], nx=new int[m]; Arrays.fill(h,-1);
+            List<List<Integer>> adj = new ArrayList<>();
+            for(int i=0;i<n;i++) adj.add(new ArrayList<>());
+            int[][] edges = {{0,1},{0,2},{1,3},{2,4}};
+            for(int i=0;i<m;i++){
+                int u=edges[i][0], v=edges[i][1];
+                ta[i]=v; nx[i]=h[u]; h[u]=i;
+                adj.get(u).add(v);
+            }
+            return topoSortArray(n,h,nx,ta) == topoSortList(n,adj);
+        })) curn++;
+        System.out.printf("Результат: %d/6%n", curn);
+        System.out.println("В тесте участвовало 6 разных графов.");
+        if (curn < 6) System.exit(1);
+    }
+    static boolean run(String name, java.util.function.Supplier<Boolean> test) {
+        try {
+            if (test.get()) { System.out.println("  ✓ " + name); return true; }
+        } catch (Exception e) {}
+        System.out.println("  ✗ " + name);
+        return false;
+    }
+
     public static void main(String[] args) throws Exception {
+        runTests();
 
         String dataDir = "topo_data";
-        String resultFile = "benchmark_results.csv";
+        String resultFile = "results.csv";
 
         // 1. Подготовка данных
-        generateDatasets(dataDir, 70, 100, 10000);
+        generateData(dataDir, 70, 100, 10000);
 
         File dir = new File(dataDir);
         File[] files = dir.listFiles((d, name) -> name.endsWith(".txt"));
@@ -128,7 +192,6 @@ public class TopologicalSort{
 
         Stopwatch sw = new Stopwatch();
 
-        // Locale.US для CSV — иначе на русской локали %.4f напечатает запятую
         try (PrintWriter out = new PrintWriter(resultFile)) {
             out.println("Size,Time_Array_ms,Iter_Array,Time_List_ms,Iter_List");
             System.out.println("Запуск...");
